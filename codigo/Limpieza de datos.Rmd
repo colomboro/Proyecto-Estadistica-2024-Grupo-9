@@ -1,0 +1,635 @@
+---
+title: "limpieza"
+output: html_document
+date: "2024-05-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readxl)
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(janitor)
+library(lubridate)
+library(stringr)
+library(RColorBrewer)
+library(plotrix)
+library(openxlsx)
+library(gridExtra)
+library(car)# paquete para usar la prueba levene
+
+```
+
+
+```{r}
+# Cargar bases de daros, limpieza y ordenamiento de las bases, asì como filtracion 
+# de observaciones de interes
+
+base_de_datos <- read_excel("C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/cyberataques.xlsx")
+Usuarios_internet_USA <- read_excel("C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Usuarios_USA.xlsx")
+Usuarios_internet_Europa <- read_excel("C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Usuarios_Europa.xlsx")
+
+
+base_de_datos<-clean_names(base_de_datos)
+#base_de_datos <- na.omit(base_de_datos)
+#base_de_datos$Cantidad_de_ataques <- 1
+
+# Llenar las observaciones faltantes de "Region" con los valores de "Country"
+#base_de_datos <- base_de_datos %>%
+ # mutate(receiver_region = ifelse(is.na(receiver_region), receiver_country, receiver_region))
+
+# Aplicar la condición de que si "Country" inicia con "Europe", "EU", o "Eastern Europ", llenar la observación de "receiver_region" con "EUROPE"
+base_de_datos <- base_de_datos %>%
+  mutate(receiver_region = ifelse(grepl("^EU|^EUROPE|^Eastern Europ|^Europe", receiver_country), "EUROPE", receiver_region))
+
+# Eliminar las observaciones que no tienen valores en "Region"
+base_de_datos <- base_de_datos %>%
+  filter(!is.na(receiver_region))
+
+
+base_datos_filtrada <- base_de_datos %>%
+  select(start_date, receiver_country, receiver_region) %>%
+  mutate(Cantidad_de_ataques = 1) %>%
+  filter(grepl("^EUROPE|^Europe|^EU|^NATO; NORTHAM", receiver_region)) %>%
+  filter((grepl("^NATO; NORTHAM", receiver_region) & grepl("^United States", receiver_country)) | !grepl("^NATO; NORTHAM", receiver_region)) %>%
+  na.omit()
+
+# Formato fecha
+base_datos_filtrada$start_date <- as.Date(base_datos_filtrada$start_date)
+base_datos_filtrada$start_date <- format(base_datos_filtrada$start_date, "%Y/%m/%d")
+
+```
+
+
+```{r}
+# Se filtra por fechas de interes la base de datos base_datos_filtrada
+# Crear un dataframe con datos del 2017-2020
+datos_filtrada_2016_2023 <- subset(base_datos_filtrada, start_date >= as.Date("2016-01-01") & start_date <= as.Date("2023-12-31"))
+
+
+```
+
+```{r}
+# Se crean variables para los datos que inicien con E, para representar europa
+# y NATO para representar USA, ademàs usando la start_date se crean columnas 
+# ue representan el año, el semestre, en caso de semestre si es el primero 
+# o l segundo y se crear una columna con cuatrimestre, que represente el cuatrimestre
+# del año del 1 al 3
+
+# Filtrar las observaciones que comienzan con 'E' en receiver_region
+# y se crea un variable con estos datos
+datos_Europa_2016_2023 <- datos_filtrada_2016_2023 %>%
+  filter(substr(receiver_region, 1, 1) == 'E') %>%
+  mutate(
+    cuatrimestre = case_when(
+      month(start_date) %in% 1:4 ~ 1,
+      month(start_date) %in% 5:8 ~ 2,
+      month(start_date) %in% 9:12 ~ 3
+    ),semestre = ifelse(month(start_date) %in% 1:6, 1, 2),
+    año = year(start_date)
+  )
+
+# Filtrar las observaciones que comienzan con 'NATO' en receiver_region y se crear 
+# una variable con estos datos
+datos_USA_2016_2023 <- datos_filtrada_2016_2023 %>%
+  filter(substr(receiver_region, 1, 4) == 'NATO') %>%
+  mutate(
+    cuatrimestre = case_when(
+      month(start_date) %in% 1:4 ~ 1,
+      month(start_date) %in% 5:8 ~ 2,
+      month(start_date) %in% 9:12 ~ 3
+    ),semestre = ifelse(month(start_date) %in% 1:6, 1, 2),
+    año = year(start_date)
+  )
+```
+
+
+
+```{r}
+
+# Se crean variables con los dato, anuales, semestrales y cuatrimestrasles para
+# USA y Europa para el periodo 2016-2023 por la cantidad de ciberataques segmentada de 
+# forma semestral, anual y cuatrimestral
+
+
+#----------------------------------------------------------------------------------
+
+
+datos_Europa_2016_2023_anuales <- datos_Europa_2016_2023 %>%
+  group_by(año) %>%
+  summarise(cantidad_ciberataques = sum(Cantidad_de_ataques))
+
+
+#-----------------------------------------------------------------------------------
+
+
+datos_USA_2016_2023_anuales <- datos_USA_2016_2023 %>%
+  group_by(año) %>%
+  summarise(cantidad_ciberataques = sum(Cantidad_de_ataques))
+
+
+
+#----------------------------------------------------------------------------------
+
+#Crear base con los semestres de acuerdo al año y ciberataque
+
+datos_Europa_2016_2023_semestral <- datos_Europa_2016_2023 %>%
+  group_by(año, semestre) %>%
+  summarize(cantidad_ciberataques_semestral = sum(Cantidad_de_ataques, na.rm = TRUE))
+
+datos_USA_2016_2023_semestral <- datos_USA_2016_2023 %>%
+  group_by(año, semestre) %>%
+  summarize(cantidad_ciberataques_semestral = sum(Cantidad_de_ataques, na.rm = TRUE))
+
+#--------------------------------------------------------------------------------------
+
+datos_Europa_2016_2023_cuatrimestral <- datos_Europa_2016_2023 %>%
+  group_by(año, cuatrimestre) %>%
+  summarize(cantidad_ciberataques_cuatrimestral = sum(Cantidad_de_ataques, na.rm = TRUE))
+
+datos_USA_2016_2023_cuatrimestral <- datos_USA_2016_2023 %>%
+  group_by(año, cuatrimestre) %>%
+  summarize(cantidad_ciberataques_cuatrimestral = sum(Cantidad_de_ataques, na.rm = TRUE))
+
+```
+
+
+```{r}
+# separar lo datos de los usuario de internet tanto de europa como de USA en cuatrimestral
+
+#Caso Europeo
+Usuarios_internet_Europa <- Usuarios_internet_Europa %>%
+  rename(usuarios_internet_millones = `usuarios_internet(millones)`)
+
+Usuarios_internet_cuatrimestral_Europa <- Usuarios_internet_Europa %>%
+  # Crear una columna temporal para identificar la triplicacion
+  mutate(temp_id = row_number()) %>%
+  # triplicar filas
+  uncount(3) %>%
+  # Asignar el cuatrimestre correspondiente
+  mutate(cuatrimestre = rep(1:3, times = nrow(Usuarios_internet_Europa))) %>%
+  # Ajustar valores de usuarios_internet_millones para cada semestre
+  group_by(temp_id) %>%
+  mutate(usuarios_internet_millones = usuarios_internet_millones / 3) %>%
+  ungroup() %>%
+  # Eliminar la columna temporal
+  select(-temp_id)
+
+#Caso USA
+Usuarios_internet_USA <- Usuarios_internet_USA %>%
+  rename(usuarios_internet_millones = `usuarios_internet(millones)`)
+
+Usuarios_internet_cuatrimestral_USA <- Usuarios_internet_USA %>%
+  # Crear una columna temporal para identificar la triplicacion
+  mutate(temp_id = row_number()) %>%
+  # triplicar filas
+  uncount(3) %>%
+  # Asignar el cuatrimestre correspondiente
+  mutate(cuatrimestre = rep(1:3, times = nrow(Usuarios_internet_USA))) %>%
+  # Ajustar valores de usuarios_internet_millones para cada cuatrimestre
+  group_by(temp_id) %>%
+  mutate(usuarios_internet_millones = usuarios_internet_millones / 3) %>%
+  ungroup() %>%
+  # Eliminar la columna temporal
+  select(-temp_id)
+
+
+```
+
+
+
+
+
+```{r}
+#Aspectos con los datos anuales tabla: se une la tabla de los datos anuales, para 
+# USA Y Europa con respecto a los usuarios de internet anuales, ademàs se desarrollan
+# operaciones como la razon, usando esta cantidad de usarios de internet anual
+
+
+#-------------------------------------------------------------------------------------
+#Unir los data frame con los datafram de usuarios usando left join
+datos_Europa_2016_2023_anuales<- datos_Europa_2016_2023_anuales %>% left_join(Usuarios_internet_Europa , by = "año")
+
+datos_USA_2016_2023_anuales<- datos_USA_2016_2023_anuales %>% left_join(Usuarios_internet_USA , by = "año")
+
+#-----------------------------------------------------------------------------------
+#Multiplico la columna de usuarios de internet que esta en millones por 1m
+datos_Europa_2016_2023_anuales$usuarios_internet<-datos_Europa_2016_2023_anuales$`usuarios_internet_millones`*1000000
+
+
+datos_USA_2016_2023_anuales$usuarios_internet<-datos_USA_2016_2023_anuales$`usuarios_internet_millones`*1000000
+#-------------------------------------------------------------------------------------
+# se crea la columna razon con la division de la cantidad de ciberataques y los 
+#usuarios de internet
+datos_Europa_2016_2023_anuales$razon_ciberataques_usuarios_anual<-datos_Europa_2016_2023_anuales$cantidad_ciberataques/datos_Europa_2016_2023_anuales$usuarios_internet
+
+datos_USA_2016_2023_anuales$razon_ciberataques_usuarios_anual<-datos_USA_2016_2023_anuales$cantidad_ciberataques/datos_USA_2016_2023_anuales$usuarios_internet
+
+```
+ 
+ 
+ 
+ 
+```{r}
+#Aspectos con los datos anuales tabla: se une la tabla de los datos cuatrimestral, para 
+# USA Y Europa con respecto a los usuarios de internet anuales, ademàs se desarrollan
+# operaciones como la razon, usando esta cantidad de usarios de internet cuatrimestral
+
+#-------------------------------------------------------------------------------------
+
+#Unir el dataframe de los datos semestrales y los usuarios semestrales
+
+datos_Europa_2016_2023_cuatrimestral <- datos_Europa_2016_2023_cuatrimestral %>%
+  left_join(Usuarios_internet_cuatrimestral_Europa, by = c("año", "cuatrimestre"))
+
+
+datos_USA_2016_2023_cuatrimestral <- datos_USA_2016_2023_cuatrimestral %>%
+  left_join(Usuarios_internet_cuatrimestral_USA, by = c("año", "cuatrimestre"))
+
+#--------------------------------------------------------------------------------------
+#Multiplicae la cantida de usarios para que represente los millones correctamente
+
+datos_Europa_2016_2023_cuatrimestral$usuarios_internet<-datos_Europa_2016_2023_cuatrimestral$usuarios_internet_millones*1000000
+
+datos_USA_2016_2023_cuatrimestral$usuarios_internet<-datos_USA_2016_2023_cuatrimestral$usuarios_internet_millones*1000000
+#-------------------------------------------------------------------------------------
+# se crea la columna razon con la division de la cantidad de ciberataques y los 
+#usuarios de internet
+datos_Europa_2016_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral<-datos_Europa_2016_2023_cuatrimestral$cantidad_ciberataques_cuatrimestral/datos_Europa_2016_2023_cuatrimestral$usuarios_internet
+
+datos_USA_2016_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral<-datos_USA_2016_2023_cuatrimestral$cantidad_ciberataques_cuatrimestral/datos_USA_2016_2023_cuatrimestral$usuarios_internet
+
+```
+
+
+
+
+```{r}
+# separar los dataframe para Europa y USA para los periodos 2016-2019 y 
+#2020-2023 cuatrimestral
+
+#caso Europa
+datos_Europa_2016_2019_cuatrimestral <- datos_Europa_2016_2023_cuatrimestral %>% filter(año >= as.Date(2016) & año <= as.Date(2019))
+datos_Europa_2020_2023_cuatrimestral <- datos_Europa_2016_2023_cuatrimestral %>% filter(año >= as.Date(2020) & año <= as.Date(2023))
+
+#Caso USA
+
+datos_USA_2016_2019_cuatrimestral <- datos_USA_2016_2023_cuatrimestral %>% filter(año >= as.Date(2016) & año <= as.Date(2019))
+datos_USA_2020_2023_cuatrimestral <- datos_USA_2016_2023_cuatrimestral %>% filter(año >= as.Date(2020) & año <= as.Date(2023))
+
+
+```
+
+
+
+
+
+```{r}
+#Prueba de Kolmogorov para probar la normalidad de los datos, usando los datos anuales de todo el periodo 2016-2023 para USA Y Europa, mas particularmente usando la razon creada, para verificar la normalidad
+
+
+kolmogorov_normal_Europa<-ks.test(datos_Europa_2016_2023_anuales$razon_ciberataques_usuarios_anual, "pnorm")
+
+# Imprimir el resultado
+print("El resultado de la prueba Kolmogorov de normalidad para Europa es")
+print(kolmogorov_normal_Europa)
+#-------------------------------------------------------------------------------
+kolmogorov_normal_USA <- ks.test(datos_USA_2016_2023_anuales$razon_ciberataques_usuarios_anual, "pnorm")
+
+# Imprimir el resultado
+print("El resultado de la prueba Kolmogorov de normalidad para USA es")
+print(kolmogorov_normal_USA)
+
+#como el valor de p es menor que el 0.05 de xx, entonces se descarta normalidad
+# y por tato se prosigue a desarrollar prueba no parametricas como es el caso de 
+# la chi-quadrada para mostrar independencia
+
+```
+
+
+
+```{r}
+#Prueba de Kolmogorov para comparar las distribuciones de las muestras de ambos 
+# periodos de tiempo, en este caso particular considerando la razon para europa y USA en ambos periodos.
+
+#caso Europa
+Kolmogorov_2muestras_Europa <- ks.test(datos_Europa_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral, datos_Europa_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral)
+
+# Imprimir el resultado
+print("El resultado al comparar las distribuciones de las razones de Europa cuatrimestral para 2016-2019 y 2020-2023 es")
+print(Kolmogorov_2muestras_Europa)
+
+#Caso USA
+
+Kolmogorov_2muestras_USA <- ks.test(datos_USA_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral, datos_USA_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral)
+
+# Imprimir el resultado
+print("El resultado al comparar las distribuciones de las razones de USA cuatrimestral para 2016-2019 y 2020-2023 es")
+print(Kolmogorov_2muestras_USA)
+
+
+
+```
+
+
+
+```{r}
+#Prueba Chi-quadrado para determinar independencia entre ambas muestras de datos 
+# 2016-2019 y 2020-2023 de forma cuatrimestral para Europa y para USA
+
+#Caso Europa
+resultado_chi_Europa <- chisq.test(table(datos_Europa_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral, datos_Europa_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral))
+
+print("El resultado de la prueba Chi-quadrado para Europa cuatrimestral es:")
+print(resultado_chi_Europa)
+
+#Caso USA
+resultado_chi_USA <- chisq.test(table(datos_USA_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral, datos_USA_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral))
+
+print("El resultado de la prueba Chi-quadrado para USA cuatrimestral es:")
+print(resultado_chi_USA)
+```
+
+
+
+```{r}
+# Calcular la tabla de contingencia para Europa
+tabla_contingencia_Europa <- table(
+  datos_Europa_2016_2019_semestral$razon_ciberataques_usuarios_semestral, 
+  datos_Europa_2020_2023_semestral$razon_ciberataques_usuarios_semestral
+)
+
+
+# Verificar los valores esperados para Europa
+esperados_Europa <- chisq.test(tabla_contingencia_Europa)$expected
+
+
+
+# Revisar si los valores esperados cumplen con las recomendaciones
+cumple_requisitos_Europa <- all(esperados_Europa >= 1) && sum(esperados_Europa < 5) / length(esperados_Europa) <= 0.2
+
+if (cumple_requisitos_Europa) {
+  resultado_chi_Europa <- chisq.test(tabla_contingencia_Europa)
+  print("El resultado de la prueba Chi-cuadrado para Europa semestral es:")
+  print(resultado_chi_Europa)
+} else {
+  print("La tabla de contingencia de Europa no cumple con los requisitos para la prueba Chi-cuadrado.")
+  # Usar la prueba exacta de Fisher como alternativa
+  resultado_fisher_Europa <- fisher.test(tabla_contingencia_Europa)
+  print("El resultado de la prueba exacta de Fisher para Europa semestral es:")
+  print(resultado_fisher_Europa)
+}
+
+
+
+```
+
+```{r}
+# Prueba exacta de fisher para determinar la independencia entre dos muestra 2016-2019 y 2020-2023 de forma cuatrimestral, con respecto a su razon para USA Y Europa
+
+#-----------------------------------------------------------------------------------------
+
+# Caso Europa
+
+Prueba_exacta_Fishes_Europa <- fisher.test(table(datos_Europa_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral, datos_Europa_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral))
+print(Prueba_exacta_Fishes_Europa)
+
+
+#Caso USA
+
+Prueba_exacta_Fishes_USA<- fisher.test(table(datos_USA_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral, datos_USA_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral))
+print(Prueba_exacta_Fishes_USA)
+
+```
+
+
+
+
+
+```{r}
+# # Prueba de Signos para probar la diferencia entre las medianas con respecto a la razon entre ambas muestras de 2016-2019 y 2020-2023 de forma cuatrimestral para USA y Europa, considerando un nivel de significancia del 0.15
+
+#Caso Europa
+diferencias1 <- datos_Europa_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral - datos_Europa_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral
+
+# Contar los signos positivos y negativos
+signos_positivos <- sum(diferencias1 > 0)
+signos_negativos <- sum(diferencias1 < 0)
+
+# Calcular el estadístico de la prueba de signos
+estadistico <- min(signos_positivos, signos_negativos)
+
+# Calcular el valor p
+valor_p <- 2 * pbinom(estadistico - 1, size = length(diferencias1), prob = 0.5)
+
+# Imprimir el resultado
+print(paste("Estadístico de la prueba Europa 2016-2023:", estadistico))
+print(paste("Valor p:", valor_p))
+
+#Caso USA
+
+diferencias2 <- datos_USA_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral - datos_USA_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral
+
+# Contar los signos positivos y negativos
+signos_positivos1 <- sum(diferencias2 > 0)
+signos_negativos1 <- sum(diferencias2 < 0)
+
+# Calcular el estadístico de la prueba de signos
+estadistico1<- min(signos_positivos1, signos_negativos1)
+
+# Calcular el valor p
+valor_p1 <- 2 * pbinom(estadistico1 - 1, size = length(diferencias2), prob = 0.5)
+
+# Imprimir el resultado
+print(paste("Estadístico de la prueba USA 2016_2023:", estadistico1))
+print(paste("Valor p1:", valor_p1))
+
+
+```
+
+```{r}
+# Prueba Brown-Forsythe para comparar las varianzas entre 2 muestras 2016-2019 y 2020-2023 con respecto a su razon para Europa y USA
+
+
+# Caso Europa
+
+# Calcula los residuos absolutos respecto a la mediana
+residuos1 <- abs(datos_Europa_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral - median(datos_Europa_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral))
+residuos2 <- abs(datos_Europa_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral - median(datos_Europa_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral))
+
+# Calcula las medianas de los residuos absolutos
+mediana_residuos1 <- median(residuos1)
+mediana_residuos2 <- median(residuos2)
+
+# Calcula los tamaños de las muestras
+n1 <- length(datos_Europa_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral)
+n2 <- length(datos_Europa_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral)
+
+# Calcula el estadístico de prueba F
+F_statistic <- (mediana_residuos1 / (n1 - 1)) / (mediana_residuos2 / (n2 - 1))
+
+# Realiza la prueba de Brown-Forsythe usando oneway.test
+oneway.test(c(datos_Europa_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral, datos_Europa_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral) ~ c(rep("Muestra 1", n1), rep("Muestra 2", n2)), var.equal = FALSE)
+
+#-----------------------------------------------------------------------------------------
+
+# Caso USA
+
+# Calcula los residuos absolutos respecto a la mediana
+residuos3 <- abs(datos_USA_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral - median(datos_USA_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral))
+residuos4 <- abs(datos_USA_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral - median(datos_USA_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral))
+
+# Calcula las medianas de los residuos absolutos
+mediana_residuos3 <- median(residuos3)
+mediana_residuos4 <- median(residuos4)
+
+# Calcula los tamaños de las muestras
+n3 <- length(datos_USA_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral)
+n4 <- length(datos_USA_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral)
+
+# Calcula el estadístico de prueba F
+F_statistic2 <- (mediana_residuos3 / (n3 - 1)) / (mediana_residuos4 / (n4 - 1))
+
+# Realiza la prueba de Brown-Forsythe usando oneway.test
+oneway.test(c(datos_USA_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral, datos_USA_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral) ~ c(rep("Muestra 3", n3), rep("Muestra 4", n4)), var.equal = FALSE)
+
+  
+```
+
+
+
+
+#######################################################################################
+Graficacion
+
+
+```{r}
+# Grafico con los datos nominales de ciberataques para las regiones de Europa y USA
+
+Graf_Europa_cantidad_anual <- ggplot(datos_Europa_2016_2023_anuales, aes(x = año, y = cantidad_ciberataques)) +
+  geom_bar(stat = "identity", fill = "red") +
+  labs(title = "Europa (2016-2023)", x = "Año", y = "Cantidad de ciberataques")
+
+# Gráfico para USA
+Graf_USA_cantidad_anual <- ggplot(datos_USA_2016_2023_anuales, aes(x = año, y = cantidad_ciberataques)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Estados Unidos (2016-2023)", x = "Año", y = "Cantidad de ciberataques")
+
+# Combinar los gráficos uno al lado del otro
+Graf_Europa_USA_cantidad_anual <- grid.arrange(Graf_USA_cantidad_anual, Graf_Europa_cantidad_anual, ncol = 2)
+
+```
+
+
+```{r}
+
+datos_filtrados <- base_datos_filtrada %>%
+  filter(year(start_date) >= 2016 & year(start_date) <= 2023 & 
+         grepl("^NATO|^E", receiver_region))
+
+# Paso 2: Agrupar y sumar por año y región NATO o E
+datos_agrupados <- datos_filtrados %>%
+  mutate(año = year(start_date),
+         Región = ifelse(grepl("^NATO", receiver_region), "NATO", "E")) %>%
+  group_by(año, Región) %>%
+  summarise(Cantidad_de_ataques = sum(Cantidad_de_ataques))
+
+# Paso 3: Graficar
+Graf_lineas_USA_Europa_cantidad_ataques<- ggplot(datos_agrupados, aes(x = año, y = Cantidad_de_ataques, color = Región)) +
+  geom_line() +
+  labs(title = "Cantidad de ataques por año",
+       x = "Año",
+       y = "Cantidad de ataques",
+       color = "Región") +
+  scale_color_manual(values = c("blue", "red"), labels = c("Europa", "USA")) + # Etiquetas personalizadas
+  theme_minimal()                 
+                          
+print(Graf_lineas_USA_Europa_cantidad_ataques)      
+                          
+```
+
+```{r}
+Graf_Europa_razon_anual <- ggplot(datos_Europa_2016_2023_anuales, aes(x = año, y = razon_ciberataques_usuarios_anual, fill = as.factor(año))) +
+  geom_bar(stat = "identity") +
+  labs(
+    x = "Año",
+    y = "razon de ciberataques",
+    title = "Razon de ciberataques para Europa anuales 2016-2023",
+    caption = "Fuente: Elaboración propia con datos del repositorio europeo de ciber incidentes",
+    fill = "Año" # Cambia la etiqueta de la leyenda
+  ) +
+  scale_fill_brewer(palette = "Set3") + 
+  theme_minimal() 
+
+print(Graf_Europa_razon_anual)
+```
+
+
+```{r}
+#Grafico de los dato USA razon
+
+Graf_USA_razon_anual <- ggplot(datos_USA_2016_2023_anuales, aes(x = año, y = razon_ciberataques_usuarios_anual, fill = as.factor(año))) +
+  geom_bar(stat = "identity") +
+  labs(
+    x = "Año",
+    y = "razon de ciberataques",
+    title = "Razon de ciberataques para USA anuales 2016-2023",
+    caption = "Fuente: Elaboración propia con datos del repositorio europeo de ciber incidentes",
+    fill = "Año" # Cambia la etiqueta de la leyenda
+  ) +
+  scale_fill_brewer(palette = "Set3") + 
+  theme_minimal() 
+
+# Mostrar la gráfica
+print(Graf_USA_razon_anual)
+
+
+```
+
+
+
+######################################################################################
+Guardar Tablas y graficos para exportar
+
+
+```{r}
+
+#------------------------------------------------------------------------------------
+
+#Guardar Graficos
+
+ggsave("C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Graf_Europa_razon_anual.png", Graf_Europa_razon_anual)
+
+ggsave("C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Graf_USA_razon_anual.png", Graf_USA_razon_anual)
+
+
+
+ggsave("C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Graf_lineas_USA_Europa_cantidad_ataques.png", 
+Graf_lineas_USA_Europa_cantidad_ataques)
+
+ggsave("C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Graf_Europa_USA_cantidad_anual.png", Graf_Europa_USA_cantidad_anual)
+
+#-----------------------------------------------------------------------------------
+
+
+#---------------------------------------------------------------------------------------
+#Guardar Tablas
+
+write.xlsx(datos_Europa_2016_2023_cuatrimestral, "C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Tabla_Cuatrimestral_Europa.xlsx", row.Names = FALSE)
+write.xlsx(datos_USA_2016_2023_cuatrimestral, "C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Tabla_Cuatrimestral_USA.xlsx", row.Names = FALSE)
+#------------------------------------------------------------------------
+
+write.xlsx(Usuarios_internet_semestral_USA, "C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/.xlsx", row.Names = FALSE)
+write.xlsx(datos_USA_2016_2023_cuatrimestral, "C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Tabla_Cuatrimestral_USA.xlsx", row.Names = FALSE)
+
+
+
+```
+
+
+
+

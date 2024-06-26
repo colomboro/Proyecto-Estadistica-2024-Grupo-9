@@ -35,12 +35,6 @@ Usuarios_internet_Europa <- read_excel("C:/Users/manue_p8s3enx/Desktop/Proyecto 
 
 
 base_de_datos<-clean_names(base_de_datos)
-#base_de_datos <- na.omit(base_de_datos)
-#base_de_datos$Cantidad_de_ataques <- 1
-
-# Llenar las observaciones faltantes de "Region" con los valores de "Country"
-#base_de_datos <- base_de_datos %>%
- # mutate(receiver_region = ifelse(is.na(receiver_region), receiver_country, receiver_region))
 
 # Aplicar la condición de que si "Country" inicia con "Europe", "EU", o "Eastern Europ", llenar la observación de "receiver_region" con "EUROPE"
 base_de_datos <- base_de_datos %>%
@@ -62,7 +56,134 @@ base_datos_filtrada <- base_de_datos %>%
 base_datos_filtrada$start_date <- as.Date(base_datos_filtrada$start_date)
 base_datos_filtrada$start_date <- format(base_datos_filtrada$start_date, "%Y/%m/%d")
 
+#---------------------------------------------------------------------------------
+
+# Ajustes a la base de datos para aplicar prueba Fisher en la importancia
+base_de_datos_t <- base_de_datos %>% filter(str_detect(receiver_region, "^EUROPE|^Europe|^EU|^NATO; NORTHAM") |
+         str_detect(receiver_region, "^NATO; NORTHAM"))
+
+base_de_datos_t <- subset(base_de_datos_t, start_date >= as.Date("2016-01-01") & start_date <= as.Date("2023-12-31"))
+
+
+base_de_datos_2016_2019 <- subset(base_de_datos_t, start_date >= as.Date("2016-01-01") & start_date <= as.Date("2019-12-31"))
+base_de_datos_2020_2023 <- subset(base_de_datos_t, start_date >= as.Date("2020-01-01") & start_date <= as.Date("2023-12-31"))
+
+base_de_datos_USA_2016_2019_T <- base_de_datos_2016_2019 %>%
+  filter(str_detect(receiver_region, "^NATO; NORTHAM")) %>%
+  mutate(target_multiplier_group = case_when(
+    str_detect(target_multiplier, "^Moderate") ~ "Moderate",
+    str_detect(target_multiplier, "^Not") ~ "Not",
+    str_detect(target_multiplier, "^Very") ~ "Very",
+    TRUE ~ "Other"
+  )) %>%
+  group_by(target_multiplier_group) %>%
+  summarise(cantidad = n())
+
+base_de_datos_USA_2020_2023_T <- base_de_datos_2020_2023 %>%
+  filter(str_detect(receiver_region, "^NATO; NORTHAM")) %>%
+  mutate(target_multiplier_group = case_when(
+    str_detect(target_multiplier, "^Moderate") ~ "Moderate",
+    str_detect(target_multiplier, "^Not") ~ "Not",
+    str_detect(target_multiplier, "^Very") ~ "Very",
+    TRUE ~ "Other"
+  )) %>%
+  group_by(target_multiplier_group) %>%
+  summarise(cantidad = n())
+
+base_de_datos_Europa_2016_2019_T<- base_de_datos_2016_2019 %>%
+  filter(str_detect(receiver_region, "^EUROPE|^Europe|^EU|")) %>%
+  mutate(target_multiplier_group = case_when(
+    str_detect(target_multiplier, "^Moderate") ~ "Moderate",
+    str_detect(target_multiplier, "^Not") ~ "Not",
+    str_detect(target_multiplier, "^Very") ~ "Very",
+    TRUE ~ "Other"
+  )) %>%
+  group_by(target_multiplier_group) %>%
+  summarise(cantidad = n())
+  
+  
+  
+base_de_datos_Europa_2020_2023_T <- base_de_datos_2020_2023 %>%
+  filter(str_detect(receiver_region, "^EUROPE|^Europe|^EU|")) %>%
+  mutate(target_multiplier_group = case_when(
+    str_detect(target_multiplier, "^Moderate") ~ "Moderate",
+    str_detect(target_multiplier, "^Not") ~ "Not",
+    str_detect(target_multiplier, "^Very") ~ "Very",
+    TRUE ~ "Other"
+  )) %>%
+  group_by(target_multiplier_group) %>%
+  summarise(cantidad = n())
+
+#--------------------------------------------------------------------------
+#Modificacion de base de datos para usar fiches en el nivel de impacto
+
+base_de_datos_t <- base_de_datos_t[!is.na(base_de_datos_t$impact_indicator_value), ]
+
+# Crear una función para asignar el nivel de impacto
+asignar_nivel <- function(valor) {
+  if (is.na(valor)) {
+    return("desconocido")  # Manejar valores NA
+  } else if (valor >= 0 & valor <= 8) {
+    return("medio-bajo")
+  } else if (valor >= 9 & valor <= 13) {
+    return("alto")
+  } else {
+    return("desconocido")  # Manejo de valores fuera de los rangos definidos
+  }
+}
+
+# Aplicar la función a la columna impact_indicator_value y crear la nueva columna nivel_de_impacto
+base_de_datos_t$nivel_de_impacto <- sapply(base_de_datos_t$impact_indicator_value, asignar_nivel)
+
+base_de_datos_2016_2019_impac <- subset(base_de_datos_t, start_date >= as.Date("2016-01-01") & start_date <= as.Date("2019-12-31"))
+base_de_datos_2020_2023_impac <- subset(base_de_datos_t, start_date >= as.Date("2020-01-01") & start_date <= as.Date("2023-12-31"))
+
+
+base_de_datos_USA_2016_2019_impac <- base_de_datos_2016_2019_impac %>%
+  filter(str_detect(receiver_region, "^NATO; NORTHAM")) %>%
+  mutate(nivel_de_impacto = case_when(
+    str_detect(nivel_de_impacto, "^alto") ~ "alto",
+    str_detect(nivel_de_impacto, "^medio-bajo") ~ "medio-bajo",
+    TRUE ~ "Other"
+  )) %>%
+  group_by(nivel_de_impacto) %>%
+  summarise(cantidad = n())
+
+base_de_datos_USA_2020_2023_impac <- base_de_datos_2020_2023_impac %>%
+  filter(str_detect(receiver_region, "^NATO; NORTHAM")) %>%
+  mutate(nivel_de_impacto = case_when(
+    str_detect(nivel_de_impacto, "^alto") ~ "alto",
+    str_detect(nivel_de_impacto, "^medio-bajo") ~ "medio-bajo",
+    TRUE ~ "Other"
+  )) %>%
+  group_by(nivel_de_impacto) %>%
+  summarise(cantidad = n())
+
+
+base_de_datos_Europa_2016_2019_impac <- base_de_datos_2016_2019_impac %>%
+  filter(str_detect(receiver_region, "^EUROPE|^Europe|^EU|")) %>%
+  mutate(nivel_de_impacto = case_when(
+    str_detect(nivel_de_impacto, "^alto") ~ "alto",
+    str_detect(nivel_de_impacto, "^medio-bajo") ~ "medio-bajo",
+    TRUE ~ "Other"
+  )) %>%
+  group_by(nivel_de_impacto) %>%
+  summarise(cantidad = n())
+
+
+base_de_datos_Europa_2020_2023_impac <- base_de_datos_2020_2023_impac %>%
+  filter(str_detect(receiver_region, "^EUROPE|^Europe|^EU|")) %>%
+  mutate(nivel_de_impacto = case_when(
+    str_detect(nivel_de_impacto, "^alto") ~ "alto",
+    str_detect(nivel_de_impacto, "^medio-bajo") ~ "medio-bajo",
+    TRUE ~ "Other"
+  )) %>%
+  group_by(nivel_de_impacto) %>%
+  summarise(cantidad = n())
+
+
 ```
+
 
 
 ```{r}
@@ -336,75 +457,85 @@ print(Kolmogorov_2muestras_USA)
 ```
 
 
-
 ```{r}
-#Prueba Chi-quadrado para determinar independencia entre ambas muestras de datos 
-# 2016-2019 y 2020-2023 de forma cuatrimestral para Europa y para USA
 
-#Caso Europa
-resultado_chi_Europa <- chisq.test(table(datos_Europa_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral, datos_Europa_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral))
-
-print("El resultado de la prueba Chi-quadrado para Europa cuatrimestral es:")
-print(resultado_chi_Europa)
-
-#Caso USA
-resultado_chi_USA <- chisq.test(table(datos_USA_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral, datos_USA_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral))
-
-print("El resultado de la prueba Chi-quadrado para USA cuatrimestral es:")
-print(resultado_chi_USA)
-```
-
-
-
-```{r}
-# Calcular la tabla de contingencia para Europa
-tabla_contingencia_Europa <- table(
-  datos_Europa_2016_2019_semestral$razon_ciberataques_usuarios_semestral, 
-  datos_Europa_2020_2023_semestral$razon_ciberataques_usuarios_semestral
+#Prueba de Fisher de acuerdo a importancia para Europa
+Tabla_Contingencias_Europa <- data.frame(
+  very = c(base_de_datos_Europa_2016_2019_T$cantidad[2], base_de_datos_Europa_2020_2023_T$cantidad[4] ),        # Ejemplo: frecuencias de "very" antes y durante el COVID-19
+  moderate = c(base_de_datos_Europa_2016_2019_T$cantidad[1], base_de_datos_Europa_2020_2023_T$cantidad[1])    # Ejemplo: frecuencias de "moderate" antes y durante el COVID-19
 )
 
+# Nombrar las filas y columnas
+colnames(Tabla_Contingencias_Europa) <- c("Importancia Alta", "Importancia Moderada")
+rownames(Tabla_Contingencias_Europa) <- c("Antes Covid(2016-2019)", "Durante y despues Covid(2020-2023)")
 
-# Verificar los valores esperados para Europa
-esperados_Europa <- chisq.test(tabla_contingencia_Europa)$expected
+# Mostrar los datos
+resultado_fisher_Europa_Imp <- fisher.test(Tabla_Contingencias_Europa)
 
+# Mostrar los resultados
+print(paste("Resultado de Fisher para Europa de acuerdo a importancia:", resultado_fisher_Europa_Imp$p.value))
+#--------------------------------------------------------------------------------
 
+#Prueba de Fisher de acuerdo a importancia USA
+Tabla_Contingencias_USA <- data.frame(
+  very = c(0, base_de_datos_USA_2020_2023_T$cantidad[4] ),        # Ejemplo: frecuencias de "very" antes y durante el COVID-19
+  moderate = c(base_de_datos_USA_2016_2019_T$cantidad[1], base_de_datos_USA_2020_2023_T$cantidad[1])    # Ejemplo: frecuencias de "moderate" antes y durante el COVID-19
+)
 
-# Revisar si los valores esperados cumplen con las recomendaciones
-cumple_requisitos_Europa <- all(esperados_Europa >= 1) && sum(esperados_Europa < 5) / length(esperados_Europa) <= 0.2
+# Nombrar las filas y columnas
+colnames(Tabla_Contingencias_USA) <- c("Importancia Alta", "Importancia Moderada")
+rownames(Tabla_Contingencias_USA) <- c("Antes Covid(2016-2019)", "Durante y despues Covid(2020-2023)")
 
-if (cumple_requisitos_Europa) {
-  resultado_chi_Europa <- chisq.test(tabla_contingencia_Europa)
-  print("El resultado de la prueba Chi-cuadrado para Europa semestral es:")
-  print(resultado_chi_Europa)
-} else {
-  print("La tabla de contingencia de Europa no cumple con los requisitos para la prueba Chi-cuadrado.")
-  # Usar la prueba exacta de Fisher como alternativa
-  resultado_fisher_Europa <- fisher.test(tabla_contingencia_Europa)
-  print("El resultado de la prueba exacta de Fisher para Europa semestral es:")
-  print(resultado_fisher_Europa)
-}
+print(Tabla_Contingencias_USA)
 
+# Mostrar los datos
+resultado_fisher_USA_IMP <- fisher.test(Tabla_Contingencias_USA)
 
+# Mostrar los resultados
+print(paste("Resultado de Fisher para USA de acuerdo a importancia",resultado_fisher_USA_IMP$p.value))
 
 ```
+
 
 ```{r}
-# Prueba exacta de fisher para determinar la independencia entre dos muestra 2016-2019 y 2020-2023 de forma cuatrimestral, con respecto a su razon para USA Y Europa
+# Prueba de Fisher para independencia del nivel de impacto
 
-#-----------------------------------------------------------------------------------------
+# Datos de Europa
+Tabla_Contingencias_Europa_impacto <- data.frame(
+  alto = c(base_de_datos_Europa_2016_2019_impac$cantidad[1], base_de_datos_Europa_2020_2023_impac$cantidad[1]),
+  medio_bajo = c(base_de_datos_Europa_2016_2019_impac$cantidad[2], base_de_datos_Europa_2020_2023_impac$cantidad[2])
+)
 
-# Caso Europa
+# Nombrar las filas y columnas
+colnames(Tabla_Contingencias_Europa_impacto) <- c("alto", "medio_bajo")
+rownames(Tabla_Contingencias_Europa_impacto) <- c("Antes Covid(2016-2019)", "Durante y despues Covid(2020-2023)")
 
-Prueba_exacta_Fishes_Europa <- fisher.test(table(datos_Europa_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral, datos_Europa_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral))
-print(Prueba_exacta_Fishes_Europa)
+# Mostrar los datos
+resultado_fisher_Europa_impac <- fisher.test(Tabla_Contingencias_Europa_impacto)
 
+# Mostrar los resultados
+print(paste("Resultado de prueba Fisher en nivel de impacto para Europa:", resultado_fisher_Europa_impac$p.value))
 
-#Caso USA
+# Datos de USA
+Tabla_Contingencias_USA_impacto <- data.frame(
+  alto = c(base_de_datos_USA_2016_2019_impac$cantidad[1], base_de_datos_USA_2020_2023_impac$cantidad[1]),
+  medio_bajo = c(base_de_datos_USA_2016_2019_impac$cantidad[2], base_de_datos_USA_2020_2023_impac$cantidad[2])
+)
 
-Prueba_exacta_Fishes_USA<- fisher.test(table(datos_USA_2016_2019_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral, datos_USA_2020_2023_cuatrimestral$razon_ciberataques_usuarios_cuatrimestral))
-print(Prueba_exacta_Fishes_USA)
+# Nombrar las filas y columnas
+colnames(Tabla_Contingencias_USA_impacto) <- c("alto", "medio_bajo")
+rownames(Tabla_Contingencias_USA_impacto) <- c("Antes Covid(2016-2019)", "Durante y despues Covid(2020-2023)")
+
+# Mostrar los datos
+resultado_fisher_USA_impac <- fisher.test(Tabla_Contingencias_USA_impacto)
+
+# Mostrar los resultados
+print(paste("Resultado de prueba Fisher para el nivel de impacto en USA:", resultado_fisher_USA_impac$p.value))
 
 ```
+
+
+
 
 
 
@@ -616,19 +747,9 @@ ggsave("C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Graf_Europa_U
 #-----------------------------------------------------------------------------------
 
 
-#---------------------------------------------------------------------------------------
-#Guardar Tablas
-
-write.xlsx(datos_Europa_2016_2023_cuatrimestral, "C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Tabla_Cuatrimestral_Europa.xlsx", row.Names = FALSE)
-write.xlsx(datos_USA_2016_2023_cuatrimestral, "C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Tabla_Cuatrimestral_USA.xlsx", row.Names = FALSE)
-#------------------------------------------------------------------------
-
-write.xlsx(Usuarios_internet_semestral_USA, "C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/.xlsx", row.Names = FALSE)
-write.xlsx(datos_USA_2016_2023_cuatrimestral, "C:/Users/manue_p8s3enx/Desktop/Proyecto Estadistica/codigo/Tabla_Cuatrimestral_USA.xlsx", row.Names = FALSE)
-
-
-
+#--------------------------------------------------------------------------------------
 ```
+
 
 
 
